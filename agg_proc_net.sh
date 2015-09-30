@@ -19,7 +19,7 @@
 #   ONE TIME ONLY against ExportedProcess.csv:              #
 #   sed -i 's/\\/\\\\/g' ExportedProcess.csv                #
 #############################################################
-
+echo "Ensure execution location contains both ExportedNetworkConnection.csv and ExportedProcess.csv"
 while read procs
 do
    conns=$( grep "$( echo $proc | cut -f1 -d, )" ExportedNetworkConnection.csv \
