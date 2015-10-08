@@ -8,7 +8,7 @@
 #                 timesketch and celery                     #
 #############################################################
 
-import os, sys, re, socket, fcntl, struct
+import os, sys, re, socket, fcntl, struct, subprocess, time
 
 def psexec(payload, domain = False, user, password, ip):
     command = 'python /usr/local/bin/psexec.py '
@@ -19,13 +19,13 @@ def psexec(payload, domain = False, user, password, ip):
     print command
     os.system(command)
 
-#def check_root():
-#   uid = os.getuid()
-#   if uid = "0":
-#       print 'Executing as root'
-#   else:
-#        print 'Please run as root user'
-#        sys.exit(1)
+def check_root():
+   uid = os.getuid()
+   if uid == 0:
+       print 'Executing as root'
+   else:
+        print 'Please run as root user'
+        sys.exit(1)
 
 def service_controls(service_name, task='start'):
     os.system('service ' + service_name + ' ' + task
@@ -90,9 +90,23 @@ def nmap():
             print 'Starting nmap...'
             print ''
             nmap_tasking = raw_input('Enter nmap acceptable ip range, CIDR or comma seperated lists >> ')
-            os.system('nmap -sT -sV -O -Pn -vvv -n ' + nmap_tasking + ' -oA netsweeper')
+            
+            os.system('nmap -sT -sV -O -Pn -vvv -n ' + nmap_tasking + ' -oA netsweeper &')
             
 def windows_recon():
+    #check if nmap is currently running
+    nmap_done = False
+    print ('Verifying nmap completion...', end='')
+    while nmap_done != True:
+        proc = subprocess.Popen(['ps -ef | grep nmap |  grep -v grep '], stdout=subprocess.PIPE, shell=True)
+        (nmap_process, error) = proc.communicate()
+        if not 'nmap' in nmap_process.strip():
+            nmap_done = True
+            print 'Done'
+        else:
+            print ('.', end='')
+        time.sleep(10)
+        
     print 'Windows recon...'
     print ''
     os.system('echo `grep -i windows netsweeper.gnmap | \
@@ -223,14 +237,14 @@ def revert(user):
 #Check root function call
 check_root()
 
+#Nmap network
+nmap()
+
 #Start Grr services and processes
 start_grr()
 
 #Configure Grr Server
 client_name = configure_grr()
-
-#Nmap network
-nmap()
 
 #Get windows machines/versioning info
 domain, user, password = windows_recon()
