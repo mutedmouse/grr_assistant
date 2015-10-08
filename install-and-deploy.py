@@ -215,5 +215,32 @@ def deploy_windows(client_name, domain = False, user, password):
 def revert(user):
     service_controls('nmbd', 'stop')
     service_controls('smbd', 'stop')
-    os.system = ('/etc/
-************PICK*UP*HERE*TRANSCRIBING.
+    os.system('/etc/init.d/samba', 'stop')
+    os.system('cp /usr/share/doc/nautilus-share/examples/smb.conf /etc/samba/smb.conf')
+    os.system('rm -rf /smbtemp/*')
+    os.system('userdel ' + user)
+    
+#Check root function call
+check_root()
+
+#Start Grr services and processes
+start_grr()
+
+#Configure Grr Server
+client_name = configure_grr()
+
+#Nmap network
+nmap()
+
+#Get windows machines/versioning info
+domain, user, password = windows_recon()
+
+#Setup samba share
+samba(client_name, user, password, domain)
+
+#Deploy to windows machines (currrently executes in serial due to psexec.py port consumption)
+raw_input('Press enter to deploy')
+deploy(client_name, domain, user, password)
+
+#Revert Samba share
+revert(user)
