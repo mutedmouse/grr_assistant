@@ -10,9 +10,9 @@
 # Description:       Enable service provided by daemon.
 ### END INIT INFO
 
-dir="/etc"
-cmd="tcstl runserver -h 0.0.0.0 -p 5000"
-user="root"
+dir="/etc" #doesn't matter its in the default patch
+cmd="hardcoded in starts for the time being - will still function on any system"
+user="" #anyone can run
 
 name=`basename $0`
 pid_file="/var/run/$name.pid"
@@ -35,9 +35,9 @@ case "$1" in
         echo "Starting $name"
         cd "$dir"
         if [ -z "$user" ]; then
-            sudo $cmd >> "$stdout_log" 2>> "$stderr_log" &
+            sudo tsctl runserver -h 0.0.0.0 -p 5000 >> "$stdout_log" 2>> "$stderr_log" &
         else
-            sudo -u "$user" $cmd >> "$stdout_log" 2>> "$stderr_log" &
+            sudo -u "$user" tsctl runserver -h 0.0.0.0 -p 5000 >> "$stdout_log" 2>> "$stderr_log" &
         fi
         echo $! > "$pid_file"
         if ! is_running; then
