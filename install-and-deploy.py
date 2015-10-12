@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #############################################################
-#  Created by Frost and Grimlock                            #
+#  Created by frosty_1313 and Grimlock                      #
 #                                                           #
 #  Date: 06 OCT 2015                                        #
 #  Prerequisites: init.d script for Timesketch              #
@@ -10,18 +10,33 @@
 
 import os, sys, re, socket, fcntl, struct, subprocess, time
 
+def log(s, level):
+   DEBUG = True
+   	
+   if not DEBUG:
+      return
+
+   if level == 1:
+      print '[*] %s' %s
+   if level == 2:
+      print '[**] %s' %s
+   if level == -1:
+      print '[!] %s' %s
+   if level == -2:
+      print '[!!] %s' %s
+
 def psexec(payload, domain = False, user, password, ip):
     command = 'python /usr/local/bin/psexec.py '
     if domain:
         command += domain+'/'
     command += user + ':' + password + '@' + ip.strip()
     command += ' ' + payload
-    print command
+    log('psexec.py with payload: %s' % payload, 1)
     os.system(command)
 
 def check_root():
    uid = os.getuid()
-   if uid == 0:
+   if os.getuid() == 0:
        print 'Executing as root'
    else:
         print 'Please run as root user'
