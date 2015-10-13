@@ -10,23 +10,36 @@
 
 import os, sys, re, socket, fcntl, struct, subprocess, time
 
+'''
+@function log Outputs a string to the terminal at a given level
+@param string - string to output to user
+@param level - level to output at; 1, 2, -1, -2
+'''
 def log(s, level):
-   DEBUG = True
+	DEBUG = True
    	
-   if not DEBUG:
-      return
+	if not DEBUG:
+    	return
 
-   if level == 1:
-      print '[*] %s' %s
-   if level == 2:
-      print '[**] %s' %s
-   if level == -1:
-      print '[!] %s' %s
-   if level == -2:
-      print '[!!] %s' %s
-
+	if level == 1:
+		print '[*] %s' %s
+	if level == 2:
+		print '[**] %s' %s
+	if level == -1:
+		print '[!] %s' %s
+	if level == -2:
+		print '[!!] %s' %s
+'''
+@function psexec Calls psexec.py with given parameters
+@param payload - a string specifying the payload for psexec
+@param domain - the domain for the target machine
+@param user - the user, preferably the admin, to login to the machine with
+@param password - the escaped password for the user
+@param ip - the ip address of the target machine
+'''
 def psexec(payload, domain = False, user, password, ip):
-    command = 'python /usr/local/bin/psexec.py '
+	#Base command
+	command = 'python /usr/local/bin/psexec.py '
     if domain:
         command += domain+'/'
     command += user + ':' + password + '@' + ip.strip()
@@ -35,12 +48,9 @@ def psexec(payload, domain = False, user, password, ip):
     os.system(command)
 
 def check_root():
-   uid = os.getuid()
-   if os.getuid() == 0:
-       print 'Executing as root'
-   else:
-        print 'Please run as root user'
-        sys.exit(1)
+	if os.getuid() != 0:
+		print 'THIS SCRIPT MUST RUN AS ROOT'
+		sys.exit(1)
 
 def service_controls(service_name, task='start'):
     os.system('service ' + service_name + ' ' + task
@@ -59,7 +69,7 @@ def start_grr():
     os.system('sleep 1')
     os.environ['C_FORCE_ROOT']= "true"
     os.system('celery -A timesketch.lib.tasks worker --loglevel="INFO" &')
-    os.system('sleep 15')
+    time.sleep(15)
 
 def configure_grr():
     #Replace grr comapny name
