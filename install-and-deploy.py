@@ -1,14 +1,17 @@
 #!/usr/bin/python
-#############################################################
-#  Created by frosty_1313 and Grimlock                      #
-#                                                           #
-#  Date: 06 OCT 2015                                        #
-#  Prerequisites: init.d script for Timesketch              #
-#                 fully installed and working elasticsearch,#
-#                 timesketch and celery                     #
-#############################################################
-
-import os, sys, re, socket, fcntl, struct, subprocess, time, tempfile
+'''
+  Created by frosty_1313 and Grimlock
+  Date: 06 OCT 2015
+  Prerequisites:
+				- init.d script for Timesketch
+                - installed and working elasticsearch,
+				  timesketch and celery                     
+				- python-nmap (xael.org/pages/python-nmap-X.X.X.tar.gz)
+'''
+#Normal python libraries
+import os, sys, re, socket, fcntl, struct, subprocess, time, tempfile, pprint, ast
+#Custom installs
+import nmap
 
 DEBUG = True
 '''
@@ -47,10 +50,10 @@ def psexec(payload, user, password, ip, domain = False):
 	#Base command
 	command = 'python /usr/local/bin/psexec.py '
 	if domain:
-        command += domain+'/'
-    command += user + ':' + password + '@' + ip.strip()
-    command += ' ' + payload
-    log('psexec.py with payload: %s' % payload, 1)
+		command += domain+'/'
+	command += user + ':' + password + '@' + ip.strip()
+	command += ' ' + payload
+	log('psexec.py with payload: %s' % payload, 1)
 	debug(command)
 	spopen(command)
 
@@ -113,25 +116,25 @@ def get_ip():
 def start_grr():
 	#Start elasticsearch and timesketch
 	log('Starting elasticsearch...', 2)
-    service_controls('elasticsearch')
+	service_controls('elasticsearch')
 	log('Starting timesketch...', 2)
-    service_controls('timesketch')
-    time.sleep(1)
+	service_controls('timesketch')
+	time.sleep(1)
 
 	#Copy current environment, add C_FORCE_ROOT, and pass to popen
 	#Need to wait for output
 	log('Starting celery...', 2)
 	new_env = os.environ.copy()
 	new_env['C_FORCE_ROOT'] = "true"
-    command = ['celery', '-A', 'timesketch.lib.tasks', 'worker', '--loglevel=INFO']
+	command = ['celery', '-A', 'timesketch.lib.tasks', 'worker', '--loglevel=INFO']
 	#Use f as a tempfile to get output back
 	with tempfile.TemporaryFile() as f:
-		subprocess.Popen(command, stdout = f, stderr = f, environ = new_env)
+		subprocess.Popen(command, stdout = f, stderr = f, env = new_env)
 		time.sleep(5)
 		f.seek(0)
 		debug(''.join( f.readlines() ))
 	
-    time.sleep(10)
+	time.sleep(10)
 
 '''
 @function configure_grr Update the Grr config file with user input  and restart GRR
@@ -141,15 +144,15 @@ def configure_grr():
 	config = ''.join(open('/etc/grr/grr-server.yaml', 'r').readlines())
 
 	#Replace grr comapny name
-    client_company_name = raw_input('Enter the client company name >> ').strip()
+	client_company_name = raw_input('Enter the client company name >> ').strip()
 	config = re.sub( re.compile('Client.company_name\:.*?\n'), 'Client.company_name: %s\n' % client_company_name, config)
 
     #Replace client name
-    client_name = raw_input('Enter the client name >> ').strip()
+	client_name = raw_input('Enter the client name >> ').strip()
 	config = re.sub( re.compile('Client.name\:.*?\n'), 'Client.name: %s\n' % client_name, config)
 
     #Replace client daemon name
-    client_daemon_name = client_name + 'd'
+	client_daemon_name = client_name + 'd'
 	config = re.sub( re.compile('Client.binary_name\: ...*\n'), 'Client.binary_name: %s' % client_daemon_name, config)
 	
 	#Write the config file
@@ -174,26 +177,103 @@ def configure_grr():
 	subprocess.Popen(['/usr/bin/grr_server', '--start_ui', '--disallow_missing_config_definitions', '--config=/etc/grr/grr-server.yaml'])
 	subprocess.Popen(['/usr/bin/grr_server', '--start_http_server', '--disallow_missing_config_definitions', '--config=/etc/grr/grr-server.yaml'])
 
-    return client_name
+	return client_name
 
-def nmap():
-    existing_results = False 
-    #Dirwalk for netsweeper gnmap file
-    for dirpath, dirnames, files in os.walk('.'):
-        for f in files:
-            if 'netsweeper.gnmap' in f:
-                print '[!!] There appears to already be scan results...'
-                answer = raw_input('[!!] Enter "y" to use those results instead of running a new scan >> ')
-                if 'y' in answer.lower():
-                    existing_results = True
-        if not existing_results:
-            #Run the nmap
-            print 'Starting nmap...'
-            print ''
-            nmap_tasking = raw_input('Enter nmap acceptable ip range, CIDR or comma seperated lists >> ')
-            
-            os.system('nmap -sT -sV -O -Pn -vvv -n ' + nmap_tasking + ' -oA netsweeper &')
-            
+'''
+@function nmap_network Scan a user provided network segment for hosts, also checks if scan results already exists and if user wants to resuse those
+@return returns a dictionary of hosts with ip as key and a dict of host data as
+	the values.  Each host dictionary will have the following keys: hostname, 
+	vendor, mac, ipv4, ipv6, ports(a dictionary of port details), os_vendor,
+	os_family, os_type and os_vers.  This is also output to scan_results.json
+'''
+#TODO: Allow user to keep results and add to them
+#TODO: Break scanning out into its own class
+def nmap_network():
+	#Check if results exist
+	results_exist = 0
+	if os.path.isfile('scan_results.json'):
+		log('''There appears to be scan results already.  Would you like to:
+	(1) Reuse these results without scanning again[default]
+	(2) Discard those results and start over?''', 2)
+		results_exist = raw_input(' >> ').strip() or 1
+		results_exist = int(results_exist)
+	
+	#If we are going to resuse results, reload scan_results.json
+	if results_exist == 1:
+		results = ''.join(open('scan_results.json', 'r').readlines())
+		#ast.literal_eval evaluates a string to a built in python type
+		#In this case, a dictionary
+		return ast.literal_eval(results)
+
+	#Get network to scan
+	nmap_tasking = raw_input('Enter nmap acceptable network or host information >> ').strip()
+	#Initialize scanner and conduct scan
+	scanner = nmap.PortScanner()
+	log('Running nmap against %s' % nmap_tasking, 1)
+	debug('nmap %s -sT -sV -A -Pn -n -p0-1024' % nmap_tasking)
+	scanner.scan(hosts = nmap_tasking, arguments = '-sT -sV -A -Pn -n -p0-1024')	
+
+	#Dictionary that will eventually be scanned
+	ret_dict = {}
+	
+	for host in scanner.all_hosts():
+		#Assign a temporary value to hold this host's results
+		temp = scanner[host]
+		#If the host is in fact up
+		if temp.state() == 'up':
+			#Using .get() method allows for error recovery if key is not present
+			new_host = {}
+			new_host['hostname'] = temp.hostname()
+			
+			#[vendor] is a dict of mac: vendor, we want the first value
+			#if this doesn't exist, assign none
+			vend = temp.get('vendor', None)
+			new_host['vendor'] = vend.values()[0] if vend else None
+
+			#Get various addresses
+			addresses = temp.get('addresses', {})
+			new_host['mac'] = addresses.get('mac', None)
+			new_host['ipv4'] = addresses.get('ipv4', None)
+			new_host['ipv6'] = addresses.get('ipv6', None)
+			new_host['ports'] = []
+
+			#Get TCP and UDP ports
+			for protocol in ['tcp', 'udp']:
+				#Iterate through the ports for each protocol
+				for port in temp.get(protocol, {}).keys():
+					new_port = {}
+					new_port['num'] = port
+					new_port['type'] = protocol
+
+					#Get the port details from results
+					temp_port = temp.get('tcp', {}).get(port, {})
+					new_port['product'] = temp_port.get('product', None)
+					new_port['name'] = temp_port.get('name', None)
+					new_port['state'] = temp_port.get('state', None)
+
+					new_host['ports'].append(new_port)
+
+			#Get OS information
+			osclass = temp.get('osclass', {})
+			new_host['os_vendor'] = osclass.get('vendor')
+			new_host['os_family'] = osclass.get('osfamily')
+			new_host['os_type'] = osclass.get('type')
+			new_host['os_vers'] = osclass.get('osgen')
+
+			ret_dict[host] = new_host
+
+			#Format for debugging sanity
+			pp = pprint.PrettyPrinter(indent = 3)
+			debug('Found: %s' % pp.pformat(new_host))
+
+	#Save results to scan_results.json
+	pp = pprint.PrettyPrinter(indent = 1)
+	f = open('scan_results.json', 'w')
+	f.write( pp.pformat(ret_dict) )
+	f.close()
+	
+	return ret_dict
+
 def windows_recon():
     #check if nmap is currently running
     nmap_done = False
@@ -340,7 +420,7 @@ def revert(user):
 check_root()
 
 #Nmap network
-nmap()
+scan_results = nmap_network()
 
 #Start Grr services and processes
 start_grr()
