@@ -22,7 +22,7 @@
 echo "Ensure execution location contains both ExportedNetworkConnection.csv and ExportedProcess.csv"
 while read procs
 do
-   conns=$( grep "$( echo $proc | cut -f1 -d, )" ExportedNetworkConnection.csv \
+   conns=$( grep "$( echo $procs | cut -f1 -d, )" ExportedNetworkConnection.csv \
    | grep ",$( echo -n $procs | cut -f16 -d, )," )
    
    echo "$( echo $procs | cut -f2,16,17,18,19,20,28 -d, ),$( echo $conns \
