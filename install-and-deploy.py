@@ -11,7 +11,6 @@
 import os, sys, re, socket, fcntl, struct, subprocess, time, tempfile
 
 DEBUG = True
-
 '''
 @function log Outputs a string to the terminal at a given level
 @param s - string to output to user
