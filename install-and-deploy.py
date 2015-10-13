@@ -69,7 +69,7 @@ def check_root():
 @param environ - the environment for the command, defaults to current environment
 @return a tuple of (stdout, stderr)
 '''
-def spopen(command, environ = os.environ()):
+def spopen(command, environ = os.environ):
 	#Use tempfiles because Pipe can become full
 	tempout = tempfile.TemporaryFile()
 	temperr = tempfile.TemporaryFile()
@@ -126,7 +126,7 @@ def start_grr():
 	new_env['C_FORCE_ROOT'] = "true"
     command = ['celery', '-A', 'timesketch.lib.tasks', 'worker', '--loglevel=INFO']
 	#Use f as a tempfile to get output back
-	with f as tempfile.TemporaryFile():
+	with tempfile.TemporaryFile() as f:
 		subprocess.Popen(command, stdout = f, stderr = f, environ = new_env)
 		time.sleep(5)
 		f.seek(0)
@@ -207,6 +207,7 @@ def windows_recon():
             print 'Done'
         else:
             #print ('.', end='')
+			pass
         time.sleep(10)
         
     print 'Windows recon...'
