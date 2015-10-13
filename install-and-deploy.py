@@ -10,17 +10,14 @@
 
 import os, sys, re, socket, fcntl, struct, subprocess, time
 
+DEBUG = True
+
 '''
 @function log Outputs a string to the terminal at a given level
-@param string - string to output to user
+@param s - string to output to user
 @param level - level to output at; 1, 2, -1, -2
 '''
 def log(s, level):
-	DEBUG = True
-   	
-	if not DEBUG:
-    	return
-
 	if level == 1:
 		print '[*] %s' %s
 	if level == 2:
@@ -29,6 +26,16 @@ def log(s, level):
 		print '[!] %s' %s
 	if level == -2:
 		print '[!!] %s' %s
+
+'''
+@function debug Output string if global DEBUG is true
+@param s - string to output
+'''
+def debug(s):
+	global DEBUG
+	if DEBUG:
+		print '[DEBUG] %s' % s
+
 '''
 @function psexec Calls psexec.py with given parameters
 @param payload - a string specifying the payload for psexec
@@ -45,7 +52,8 @@ def psexec(payload, domain = False, user, password, ip):
     command += user + ':' + password + '@' + ip.strip()
     command += ' ' + payload
     log('psexec.py with payload: %s' % payload, 1)
-    os.system(command)
+	debug(command)
+	spopen(command)
 
 '''
 @function check_root Checks if script is uid 0 and if not exits
