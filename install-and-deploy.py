@@ -73,6 +73,7 @@ def spopen(command, environ = False):
 	environ = environ if environ else os.environ
 	p = subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True, env = environ)
 	out, err = p.communicate()
+	debug('Command: %s\n\tSTDOUT: %s\n\tSTDERR: %s' % (command, out, err))
 	return (out, err)
 
 '''
@@ -83,6 +84,7 @@ def spopen(command, environ = False):
 '''
 def service_controls(service_name, task='start'):
 	command = 'service %s %s' %(service_name, task)
+	debug(command)
 	return spopen(command)
 
 '''
@@ -110,8 +112,6 @@ def start_grr():
     command = 'celery -A timesketch.lib.tasks worker --loglevel="INFO" &'
 	spopen(command, cur_env)
 
-    #os.environ['C_FORCE_ROOT']= "true"
-    #os.system('celery -A timesketch.lib.tasks worker --loglevel="INFO" &')
     time.sleep(15)
 
 '''
