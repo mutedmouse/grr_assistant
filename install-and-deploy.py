@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #############################################################
-#  Created by Frost and Grimlock                            #
+#  Created by frosty_1313 and Grimlock                      #
 #                                                           #
 #  Date: 06 OCT 2015                                        #
 #  Prerequisites: init.d script for Timesketch              #
@@ -8,70 +8,172 @@
 #                 timesketch and celery                     #
 #############################################################
 
-import os, sys, re, socket, fcntl, struct, subprocess, time
+import os, sys, re, socket, fcntl, struct, subprocess, time, tempfile
 
-def psexec(payload, domain = False, user, password, ip):
-    command = 'python /usr/local/bin/psexec.py '
-    if domain:
+DEBUG = True
+
+'''
+@function log Outputs a string to the terminal at a given level
+@param s - string to output to user
+@param level - level to output at; 1, 2, -1, -2
+'''
+def log(s, level):
+	if level == 1:
+		print '[*] %s' %s
+	if level == 2:
+		print '[**] %s' %s
+	if level == -1:
+		print '[!] %s' %s
+	if level == -2:
+		print '[!!] %s' %s
+
+'''
+@function debug Output string if global DEBUG is true
+@param s - string to output
+'''
+def debug(s):
+	global DEBUG
+	if DEBUG:
+		print '[DEBUG] %s' % s
+
+'''
+@function psexec Calls psexec.py with given parameters
+@param payload - a string specifying the payload for psexec
+@param user - the user, preferably the admin, to login to the machine with
+@param password - the escaped password for the user
+@param ip - the ip address of the target machine
+@param domain - the domain for the target machine
+'''
+def psexec(payload, user, password, ip, domain = False):
+	#Base command
+	command = 'python /usr/local/bin/psexec.py '
+	if domain:
         command += domain+'/'
     command += user + ':' + password + '@' + ip.strip()
     command += ' ' + payload
-    print command
-    os.system(command)
+    log('psexec.py with payload: %s' % payload, 1)
+	debug(command)
+	spopen(command)
 
+'''
+@function check_root Checks if script is uid 0 and if not exits
+'''
 def check_root():
-   uid = os.getuid()
-   if uid == 0:
-       print 'Executing as root'
-   else:
-        print 'Please run as root user'
-        sys.exit(1)
+	if os.getuid() != 0:
+		print 'THIS SCRIPT MUST RUN AS ROOT'
+		sys.exit(1)
 
+'''
+@function spopen - Short for subprocess.popen, runs command and returns output
+@param command - a string to run as a shell command
+@param environ - the environment for the command, defaults to current environment
+@return a tuple of (stdout, stderr)
+'''
+def spopen(command, environ = os.environ):
+	#Use tempfiles because Pipe can become full
+	tempout = tempfile.TemporaryFile()
+	temperr = tempfile.TemporaryFile()
+
+	p = subprocess.Popen(command, stdout = tempout, stderr = temperr, env = environ)
+	#Wait for process to complete
+	p.wait()
+
+	#Return to beginning of files
+	tempout.seek(0)
+	temperr.seek(0)
+
+	#Join data
+	out = ''.join( tempout.readlines() )
+	err = ''.join( temperr.readlines() )
+
+
+	debug('Command: %s\n\tSTDOUT: %s\n\tSTDERR: %s' % (command, out, err))
+	return (out, err)
+
+'''
+@function service_controls Runs service command with given argument -- basically an alias for spopen
+@param service_name - the service name to run a given task against
+@param task - the task.  Normally, "start", "stop", "restart"
+@return Returns a tuple of (stdout, stderr)
+'''
 def service_controls(service_name, task='start'):
-    os.system('service ' + service_name + ' ' + task
+	command = ['service', service_name, task]
+	return spopen(command)
 
+'''
+@function get_ip Gets IP for current system, stolen from stackoverflow
+@return returns a string of an ipv4 address
+'''
 def get_ip():
-    #TAKEN FROM STACKOVERFLOW.COM
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-    s.fileno(),
-    0x8915,
-    struct.pack('256s', 'eth0'[:15]))[20:24])
+    return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', 'eth0'[:15]))[20:24])
 
+'''
+@function start_grr Starts the various services necessary for grr to work
+'''
 def start_grr():
+	#Start elasticsearch and timesketch
+	log('Starting elasticsearch...', 2)
     service_controls('elasticsearch')
+	log('Starting timesketch...', 2)
     service_controls('timesketch')
-    os.system('sleep 1')
-    os.environ['C_FORCE_ROOT']= "true"
-    os.system('celery -A timesketch.lib.tasks worker --loglevel="INFO" &')
-    os.system('sleep 15')
+    time.sleep(1)
 
+	#Copy current environment, add C_FORCE_ROOT, and pass to popen
+	#Need to wait for output
+	log('Starting celery...', 2)
+	new_env = os.environ.copy()
+	new_env['C_FORCE_ROOT'] = "true"
+    command = ['celery', '-A', 'timesketch.lib.tasks', 'worker', '--loglevel=INFO']
+	#Use f as a tempfile to get output back
+	with tempfile.TemporaryFile() as f:
+		subprocess.Popen(command, stdout = f, stderr = f, environ = new_env)
+		time.sleep(5)
+		f.seek(0)
+		debug(''.join( f.readlines() ))
+	
+    time.sleep(10)
+
+'''
+@function configure_grr Update the Grr config file with user input  and restart GRR
+'''
 def configure_grr():
-    #Replace grr comapny name
+	#Get config from grr-server.yaml
+	config = ''.join(open('/etc/grr/grr-server.yaml', 'r').readlines())
+
+	#Replace grr comapny name
     client_company_name = raw_input('Enter the client company name >> ').strip()
-    os.system("sed -i 's/Client\.company_name\:.*/Client\.company_name\: " + client_company_name + "/g' /ect/grr/grr-server.yaml")
+	config = re.sub( re.compile('Client.company_name\:.*?\n'), 'Client.company_name: %s\n' % client_company_name, config)
 
     #Replace client name
     client_name = raw_input('Enter the client name >> ').strip()
-
-    os.system("sed -i 's/Client.name\:.*/Client\.name\: " + client_name + "/g' /etc/grr/grr-server.yaml")
+	config = re.sub( re.compile('Client.name\:.*?\n'), 'Client.name: %s\n' % client_name, config)
 
     #Replace client daemon name
     client_daemon_name = client_name + 'd'
-    os.system("sed -i 's/Client\.binary_name\: ...*/Client\.binary_name\: " + client_daemon_name + "/g' /etc/grr/grr-server.yaml")
+	config = re.sub( re.compile('Client.binary_name\: ...*\n'), 'Client.binary_name: %s' % client_daemon_name, config)
+	
+	#Write the config file
+	f =open('/etc/grr/grr-server.yaml', 'w')
+	f.write(config)
+	f.close()
 
     #Run grr updater initialize 
     #Keep all variables if you have already initialized, only change will be rekeying
-    #I'll end up adding a logic input here
-    os.system('grr_config_updater initialize')
+    #TODO: add a logic input here
+	spopen(['grr_config_updater', 'initialize'])
 
     #Kill all grr_server instances and restart server elements
     #more logic required here for multiple grr_server workers
     ##totally based on quantity of expected hosts - more hosts = more workers
-    os.system('killall grr_server')
-    os.system('sudo /usr/bin/grr_server --start_worker --disallow_missing_config_definitions --config=/etc/grr/grr-server.yaml &')
-    os.system('sudo /usr/bin/grr_server --start_ui --disallow_missing_config_definitions --config=/etc/grr/grr-server.yaml &')
-    os.system('sudo /usr/bin/grr_server --start_http_server --disallow_missing_config_definitions --config=/etc/grr/grr-server.yaml &')
+	#Use normal subprocess.Popen, there is no output from these
+	log('Attempting to kill already existing grr_server processes', 2)
+	spopen(['killall', 'grr_server'])
+
+	log('Restarting grr_server', 1)
+	subprocess.Popen(['/usr/bin/grr_server', '--start_worker', '--disallow_missing_config_definitions', '--config=/etc/grr/grr-server.yaml'])
+	subprocess.Popen(['/usr/bin/grr_server', '--start_ui', '--disallow_missing_config_definitions', '--config=/etc/grr/grr-server.yaml'])
+	subprocess.Popen(['/usr/bin/grr_server', '--start_http_server', '--disallow_missing_config_definitions', '--config=/etc/grr/grr-server.yaml'])
 
     return client_name
 
@@ -96,7 +198,7 @@ def nmap():
 def windows_recon():
     #check if nmap is currently running
     nmap_done = False
-    print ('Verifying nmap completion...', end='')
+    #print ('Verifying nmap completion...', end='')
     while nmap_done != True:
         proc = subprocess.Popen(['ps -ef | grep nmap |  grep -v grep '], stdout=subprocess.PIPE, shell=True)
         (nmap_process, error) = proc.communicate()
@@ -104,7 +206,8 @@ def windows_recon():
             nmap_done = True
             print 'Done'
         else:
-            print ('.', end='')
+            #print ('.', end='')
+			pass
         time.sleep(10)
         
     print 'Windows recon...'
@@ -154,7 +257,7 @@ def samba(client_name, user, password = '', domain = False):
     os.system('/etc/init.d/samba stop')
     
     #Add remote user ad samba for automated authentication and grr agent retrieval
-    os.system('useradd ' + ' user)
+    os.system('useradd ' + user)
     os.system('smbpasswd -an ' + user)
     os.system('smbpasswd -an ' + user)
     
@@ -164,7 +267,7 @@ def samba(client_name, user, password = '', domain = False):
     except:
         pass
     os.system('chmod 777 /smbtemp')
-    os.system(cp /etc/samba/smb.conf /root/')
+    os.system('cp /etc/samba/smb.conf /root/')
     os.system('rm -f /etc/samba/smb.conf')
     
     #Build the smb.conf file for our new deployment share
@@ -207,21 +310,21 @@ def samba(client_name, user, password = '', domain = False):
     #Sleep for the share to become available to the hosts
     os.system('sleep 45')
     
-def deploy_windows(client_name, domain = False, user, password):
+def deploy_windows(client_name, user, password, domain = False):
         win64_machines = []
         win32_machines = []
         f = open('Win64.list')
         command = '"\\\\\\SECURITYSHARE\\secshare\\' + client_name + '_3.0.0.7_'
         for machine in f.readlines()[1].strip().split(' '):
             if machine not in win64_machines:
-                payload = command + "amd64.exe" >> ' + machine + '.txt'
+                payload = command + 'amd64.exe >> ' + machine + '.txt'
                 psexec(payload, domain, user, password, machine.split())
                 win64_machines.append(machine)
         f.close()
         
         for machine in f.readlines()[1].strip().split(' '):
             if machine not in win32_machines:
-                payload = command + "i386.exe" >> ' + machine + '.txt'
+                payload = command + 'i386.exe >> ' + machine + '.txt'
                 psexec(payload, domain, user, password, machine.split())
                 win32_machines.append(machine)
         f.close()
