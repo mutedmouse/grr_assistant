@@ -130,7 +130,7 @@ def start_grr():
 		subprocess.Popen(command, stdout = f, stderr = f, environ = new_env)
 		time.sleep(5)
 		f.seek(0)
-		debug(''.join( f.readlines() )
+		debug(''.join( f.readlines() ))
 	
     time.sleep(10)
 
