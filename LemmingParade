@@ -1,0 +1,77 @@
+#!/bin/bash
+###################################################
+#
+#  Created: Grimlock
+#  Intent: Large Scale distributed GRR deployment
+#  regardless of platform and domain configuration
+#
+#  Requirements: - ansible
+#                - lxc
+#                - python and python-dev
+#                - impacket psexec.py
+#                - sshpass
+#                - pyans1 and pycrypto
+#                - grr fully initialized
+#                - nmap
+#
+#  THIS SCRIPT SHOULD BE RUN AS ROOT!!!
+#  ENSURE SECOND TERMINAL IS AVAILABLE FOR
+#  LXC TEMPLATE CONFIGURATION DURING EMPLOYMENT!
+#
+##################################################
+
+#install requirements (minus grr initialization)
+apt-get install -y lxc python-dev ansible python-pip unzip sshpass
+pip install pyasn1 pycrypto
+wget https://github.com/mutedmouse/impacket/archive/master.zip
+
+#unzip and configure psexec.py
+unzip master.zip
+python master/setup.py build
+python master/setup.py install
+echo "This version of psexec.py does not permit \@ or \: in the password"
+echo "Additionally, all other special characters myst be escaped with \\ character"
+
+#create lxc template container
+echo "Ensure you have created a trusty-tahr lxc previously or have internet connection before this stage"
+read -p "Press enter to continue" entar
+lxc-create -t download -n lemtemplate -- -d ubuntu -r trusty -a amd64
+
+#make your configurations here
+echo "Now is the time to make ssh avalable in the lxc container..."
+echo "I will start the container and prepare a session, but you have to perform the first four lines of this script in the template for this to work..."
+echo ""
+echo " ---COMMANDS-TO-USE--- "
+echo "apt-get install -y lxc python-dev unzip ansible sshpass openssh-server"
+echo "pip install pyasn1 pycrypto"
+echo "useradd <yournewuser>"
+echo "mkdir /home/<yournewuser>"
+echo "chown <yournewuser>:<yournewuser> /home/<yournewuser>"
+echo "passwd <yournewuser>
+echo "passwd root"
+echo "gpasswd --add <yournewuser> sudo"
+echo "exit"
+read -p "Press enter once you have copied the previous instructions to a usable location" entar
+lxc-start -n lemtemplate --daemon
+lxc-attach -n lemtemplate
+lxc-stop lemtemplate
+
+#now spawning lemmings
+for i in `seq 1 1 20`
+do
+    lxc-clone -o lemtemplate -n lemming$i 2>& /dev/null &
+done
+
+#if logic for cloning processes
+
+#start up the clones
+for i in `seq 1 1 20`
+do
+    lxc-start -n lemming$i 2>& /dev/null &
+done
+
+#again ensure they are done
+
+#deployment math goes here
+
+#shut them down and destroy the lemmings (minus the master template)
